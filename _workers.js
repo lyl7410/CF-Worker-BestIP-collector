@@ -13,6 +13,43 @@ const DEFAULT_SOURCES = [
   { url: 'https://addressesapi.090227.xyz/ip.164746.xyz', name: '164746-api', type: '电信', enabled: true },
   { url: 'https://www.wetest.vip/page/cloudflare/address_v4.html', name: 'wetest', type: '移动', enabled: true }
 ];
+// 辅助函数：生成优质 IP 列表 HTML
+
+
+// 辅助函数：生成 Token 区域 HTML
+
+
+
+// 辅助函数
+function getFastIPsHTML(fastIPs) {
+    if (!fastIPs || fastIPs.length === 0) return '<p style="text-align:center;color:#64748b;padding:40px;">暂无优质 IP 数据</p>';
+    return fastIPs.map(item => {
+        const ip = item.ip;
+        const lat = item.latency;
+        const cls = lat < 200 ? 'speed-fast' : lat < 500 ? 'speed-medium' : 'speed-slow';
+        const src = item.sources && item.sources[0];
+        const note = src ? src.type + lat + 'ms(' + src.name + ')' : lat + 'ms';
+        return '<div class="ip-item" data-ip="' + ip + '"><div class="ip-info"><span class="ip-address">' + ip + '</span><span class="speed-result ' + cls + '">' + note + '</span></div><div class="action-buttons"><button class="small-btn" onclick="copyIPWithNote(\'' + ip + '\',\'' + note + '\')">复制</button></div></div>';
+    }).join('');
+}
+
+function getTokenSectionHTML(tokenConfig) {
+    let h = '<div class="token-section"><h3>🔑 API Token 管理</h3>';
+    if (tokenConfig) {
+        h += '<div class="token-info"><p><strong>Token:</strong></p><div class="token-display">' + tokenConfig.token + '</div>';
+        h += '<p><strong>过期:</strong> ' + (tokenConfig.neverExpire ? '永不过期' : new Date(tokenConfig.expires).toLocaleString()) + '</p>';
+        h += '</div><div style="display:flex;gap:10px;">';
+        h += '<button class="button button-warning" onclick="openTokenModal()">⚙️ 配置 Token</button>';
+        h += '<button class="button button-secondary" onclick="copyToken()">📋 复制</button>';
+        h += '<button class="button button-secondary" onclick="copyTokenUrl()">🔗 链接</button></div>';
+    } else {
+        h += '<p>暂无 Token 配置</p><button class="button button-warning" onclick="openTokenModal()">⚙️ 配置 Token</button>';
+    }
+    h += '</div>';
+    return h;
+}
+
+
 
 export default {
     async scheduled(event, env, ctx) {
@@ -364,48 +401,10 @@ export default {
 
 
 
-        function getFastIPsHTML(fastIPs) {
-            if (!fastIPs || fastIPs.length === 0) {
-                return '<p style="text-align: center; color: #64748b; padding: 40px;">暂无优质 IP 地址数据</p>';
-            }
-            return fastIPs.map(function(item) {
-                const ip = item.ip;
-                const latency = item.latency;
-                const speedClass = latency < 200 ? 'speed-fast' : latency < 500 ? 'speed-medium' : 'speed-slow';
-                const sources = item.sources || [];
-                let note = latency + 'ms';
-                if (sources.length > 0) {
-                    const s = sources[0];
-                    note = s.type + latency + 'ms(' + s.name + ')';
-                }
-                return '<div class="ip-item" data-ip="' + ip + '"><div class="ip-info"><span class="ip-address">' + ip + '</span><span class="speed-result ' + speedClass + '" id="speed-' + ip.replace(/\./g, '-') + '">' + note + '</span></div><div class="action-buttons"><button class="small-btn" onclick="copyIPWithNote(\'' + ip + '\', \'' + note + '\')">复制</button></div></div>';
-            }).join('');
-        }
+        
 
-        function getTokenSectionHTML(tokenConfig) {
-            let html = '<div class="token-section"><h3>🔑 API Token 管理</h3>';
-            if (tokenConfig) {
-                html += '<div class="token-info">';
-                html += '<p><strong>当前 Token:</strong></p>';
-                html += '<div class="token-display">' + tokenConfig.token + '</div>';
-                html += '<p><strong>过期时间:</strong> ' + (tokenConfig.neverExpire ? '永不过期' : new Date(tokenConfig.expires).toLocaleString()) + '</p>';
-                html += '<p><strong>创建时间:</strong> ' + new Date(tokenConfig.createdAt).toLocaleString() + '</p>';
-                if (tokenConfig.lastUsed) {
-                    html += '<p><strong>最后使用:</strong> ' + new Date(tokenConfig.lastUsed).toLocaleString() + '</p>';
-                }
-                html += '</div>';
-                html += '<div style="display: flex; gap: 10px; flex-wrap: wrap;">';
-                html += '<button class="button button-warning" onclick="openTokenModal()">⚙️ 配置 Token</button>';
-                html += '<button class="button button-secondary" onclick="copyToken()">📋 复制 Token</button>';
-                html += '<button class="button button-secondary" onclick="copyTokenUrl()">🔗 复制带Token的链接</button>';
-                html += '</div>';
-            } else {
-                html += '<p>暂无Token配置，请点击下方按钮创建Token。</p>';
-                html += '<button class="button button-warning" onclick="openTokenModal()">⚙️ 配置 Token</button>';
-            }
-            html += '</div>';
-            return html;
-        }
+        
+
 
     const html = `<!DOCTYPE html>
 <html lang="zh-CN">
