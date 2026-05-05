@@ -1137,11 +1137,7 @@ export default {
             ${isLoggedIn ? '🔐 管理员' : '🔓 点击登录'}
             ${isLoggedIn ? '<span style="font-size: 0.7rem; margin-left: 4px;">▼</span>' : ''}
         </div>
-        ${isLoggedIn ? `
-        <div class="dropdown-content" id="admin-dropdown">
-            <a href="javascript:void(0)" onclick="logout()">🚪 退出登录</a>
-        </div>
-        ` : ''}
+        ${isLoggedIn ? '<div class="dropdown-content" id="admin-dropdown"><a href="javascript:void(0)" onclick="logout()">🚪 退出登录</a></div>' : ''}
     </div>
 
     <div class="container">
@@ -1245,33 +1241,7 @@ export default {
             <div class="result" id="result"></div>
 
             <!-- Token管理区域 - 确保登录后显示 -->
-            ${isLoggedIn ? `
-            <div class="token-section">
-                <h3>🔑 API Token 管理</h3>
-                ${tokenConfig ? `
-                <div class="token-info">
-                    <p><strong>当前 Token:</strong></p>
-                    <div class="token-display">${tokenConfig.token}</div>
-                    <p><strong>过期时间:</strong> ${tokenConfig.neverExpire ? '永不过期' : new Date(tokenConfig.expires).toLocaleString()}</p>
-                    <p><strong>创建时间:</strong> ${new Date(tokenConfig.createdAt).toLocaleString()}</p>
-                    ${tokenConfig.lastUsed ? `<p><strong>最后使用:</strong> ${new Date(tokenConfig.lastUsed).toLocaleString()}</p>` : ''}
-                </div>
-                ` : '<p>暂无Token配置，请点击下方按钮创建Token。</p>'}
-                <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-                    <button class="button button-warning" onclick="openTokenModal()">
-                        ⚙️ 配置 Token
-                    </button>
-                    ${tokenConfig ? `
-                    <button class="button button-secondary" onclick="copyToken()">
-                        📋 复制 Token
-                    </button>
-                    <button class="button button-secondary" onclick="copyTokenUrl()">
-                        🔗 复制带Token的链接
-                    </button>
-                    ` : ''}
-                </div>
-            </div>
-            ` : ''}
+            ${isLoggedIn ? getTokenSectionHTML(tokenConfig) : ''}
         </div>
 
         <!-- 优质IP列表卡片 -->
@@ -1291,32 +1261,7 @@ export default {
             <div style="text-align: center; margin: 8px 0; font-size: 0.9rem; color: #64748b;" id="speed-test-status">准备测速...</div>
             
             <div class="ip-list" id="ip-list">
-                ${fastIPs.length > 0 ? 
-                  fastIPs.map(item => {
-                    const ip = item.ip;
-                    const latency = item.latency;
-                    const speedClass = latency < 200 ? 'speed-fast' : latency < 500 ? 'speed-medium' : 'speed-slow';
-                    const sources = item.sources || [];
-                    let note = '';
-                    if (sources.length > 0) {
-                        const s = sources[0];
-                        note = s.type + latency + 'ms(' + s.name + ')';
-                    } else {
-                        note = latency + 'ms';
-                    }
-                    return `
-                    <div class="ip-item" data-ip="${ip}">
-                        <div class="ip-info">
-                            <span class="ip-address">${ip}</span>
-                            <span class="speed-result ${speedClass}" id="speed-${ip.replace(/\./g, '-')}">${note}</span>
-                        </div>
-                        <div class="action-buttons">
-                            <button class="small-btn" onclick="copyIPWithNote('${ip}', '${note}')">复制</button>
-                        </div>
-                    </div>
-                  `}).join('') : 
-                  '<p style="text-align: center; color: #64748b; padding: 40px;">暂无优质 IP 地址数据</p>'
-                }
+                ${getFastIPsHTML(fastIPs)}
             </div>
         </div>
 
@@ -1324,15 +1269,18 @@ export default {
         <div class="card">
             <h2>🌍 数据来源状态</h2>
             <div class="sources" id="sources">
-                ${data.sources ? data.sources.map(source => `
-                    <div class="source ${source.status === 'success' ? '' : 'error'}">
-                        <strong>${source.name}</strong>: 
-                        ${source.status === 'success' ? 
-                          `成功获取 ${source.count} 个IP` : 
-                          `失败: ${source.error}`
-                        }
-                    </div>
-                `).join('') : '<p style="color: #64748b;">暂无数据来源信息</p>'}
+                ${(() => {
+                    if (!data.sources || data.sources.length === 0) {
+                        return '<p style="color: #64748b;">暂无数据来源信息</p>';
+                    }
+                    return data.sources.map(function(source) {
+                        const errorClass = source.status === 'success' ? '' : 'error';
+                        const statusText = source.status === 'success'
+                            ? '成功获取 ' + source.count + ' 个IP'
+                            : '失败: ' + source.error;
+                        return '<div class="source ' + errorClass + '"><strong>' + source.name + '</strong>: ' + statusText + '</div>';
+                    }).join('');
+                })()}
             </div>
         </div>
 
@@ -1428,6 +1376,51 @@ export default {
     </div>
 
     <script>
+
+        function getFastIPsHTML(fastIPs) {
+            if (!fastIPs || fastIPs.length === 0) {
+                return '<p style="text-align: center; color: #64748b; padding: 40px;">暂无优质 IP 地址数据</p>';
+            }
+            return fastIPs.map(function(item) {
+                const ip = item.ip;
+                const latency = item.latency;
+                const speedClass = latency < 200 ? 'speed-fast' : latency < 500 ? 'speed-medium' : 'speed-slow';
+                const sources = item.sources || [];
+                let note = latency + 'ms';
+                if (sources.length > 0) {
+                    const s = sources[0];
+                    note = s.type + latency + 'ms(' + s.name + ')';
+                }
+                return '<div class="ip-item" data-ip="' + ip + '"><div class="ip-info"><span class="ip-address">' + ip + '</span><span class="speed-result ' + speedClass + '" id="speed-' + ip.replace(/\./g, '-') + '">' + note + '</span></div><div class="action-buttons"><button class="small-btn" onclick="copyIPWithNote(\'' + ip + '\', \'' + note + '\')">复制</button></div></div>';
+            }).join('');
+        }
+
+
+        function getTokenSectionHTML(tokenConfig) {
+            let html = '<div class="token-section"><h3>🔑 API Token 管理</h3>';
+            if (tokenConfig) {
+                html += '<div class="token-info">';
+                html += '<p><strong>当前 Token:</strong></p>';
+                html += '<div class="token-display">' + tokenConfig.token + '</div>';
+                html += '<p><strong>过期时间:</strong> ' + (tokenConfig.neverExpire ? '永不过期' : new Date(tokenConfig.expires).toLocaleString()) + '</p>';
+                html += '<p><strong>创建时间:</strong> ' + new Date(tokenConfig.createdAt).toLocaleString() + '</p>';
+                if (tokenConfig.lastUsed) {
+                    html += '<p><strong>最后使用:</strong> ' + new Date(tokenConfig.lastUsed).toLocaleString() + '</p>';
+                }
+                html += '</div>';
+                html += '<div style="display: flex; gap: 10px; flex-wrap: wrap;">';
+                html += '<button class="button button-warning" onclick="openTokenModal()">⚙️ 配置 Token</button>';
+                html += '<button class="button button-secondary" onclick="copyToken()">📋 复制 Token</button>';
+                html += '<button class="button button-secondary" onclick="copyTokenUrl()">🔗 复制带Token的链接</button>';
+                html += '</div>';
+            } else {
+                html += '<p>暂无Token配置，请点击下方按钮创建Token。</p>';
+                html += '<button class="button button-warning" onclick="openTokenModal()">⚙️ 配置 Token</button>';
+            }
+            html += '</div>';
+            return html;
+        }
+
         // JavaScript 代码
         let speedResults = {};
         let isTesting = false;
@@ -2458,6 +2451,7 @@ export default {
         const result = batchResults[j];
         const url = batch[j];
         const sourceName = getSourceName(url);
+        const source = enabledSources.find(s => s.url === url) || { name: sourceName, type: '未知' };
         
         if (result.status === 'fulfilled') {
           const content = result.value;
@@ -2475,7 +2469,7 @@ export default {
           });
           
           results.push({
-            name: source.name || sourceName,
+            name: source.name,
             status: 'success',
             count: ipMatches.length,
             error: null
