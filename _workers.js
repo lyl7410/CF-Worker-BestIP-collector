@@ -80,8 +80,6 @@ export default {
             return await handleAdminLogout(env);
           case '/admin-token':
             return await handleAdminToken(request, env);
-          case '/sources':
-            return await handleSources(env, request);
           default:
             return jsonResponse({ error: 'Endpoint not found' }, 404);
         }
@@ -2423,69 +2421,6 @@ export default {
     return true;
   }
   
-
-  // 处理数据源管理
-  async function handleSources(env, request) {
-    if (!await verifyAdmin(request, env)) {
-      return jsonResponse({ error: '需要管理员权限' }, 401);
-    }
-    
-    if (request.method === 'GET') {
-      try {
-        const sources = await getSourcesConfig(env);
-        return jsonResponse({ sources });
-      } catch (error) {
-        return jsonResponse({ error: error.message }, 500);
-      }
-    } else if (request.method === 'POST') {
-      try {
-        const { sources } = await request.json();
-        
-        if (!sources || !Array.isArray(sources)) {
-          return jsonResponse({ error: '数据源格式错误' }, 400);
-        }
-        
-        for (const source of sources) {
-          if (!source.url || !source.name || !source.type) {
-            return jsonResponse({ error: '每个数据源必须包含 url、name 和 type 字段' }, 400);
-          }
-          try {
-            new URL(source.url);
-          } catch (e) {
-            return jsonResponse({ error: '无效的 URL: ' + source.url }, 400);
-          }
-        }
-        
-        await env.IP_STORAGE.put('custom_sources', JSON.stringify(sources));
-        
-        return jsonResponse({ 
-          success: true, 
-          sources,
-          message: '数据源配置已保存'
-        });
-      } catch (error) {
-        return jsonResponse({ error: error.message }, 500);
-      }
-    } else {
-      return jsonResponse({ error: 'Method not allowed' }, 405);
-    }
-  }
-  
-  // 获取数据源配置
-  async function getSourcesConfig(env) {
-    try {
-      const sources = await env.IP_STORAGE.get('custom_sources');
-      if (sources) {
-        return JSON.parse(sources);
-      }
-    } catch (error) {
-      console.error('Error reading sources config:', error);
-    }
-    
-    return JSON.parse(JSON.stringify(DEFAULT_SOURCES));
-  }
-
-
   // 工具函数
   function jsonResponse(data, status = 200) {
     return new Response(JSON.stringify(data, null, 2), {
