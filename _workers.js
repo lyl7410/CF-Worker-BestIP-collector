@@ -1605,19 +1605,19 @@ export default {
             }
             
             listElement.innerHTML = sourcesList.map((source, index) => \`
-                <div class="source-item ${!source.enabled ? 'disabled' : ''}">
+                <div class="source-item \${!source.enabled ? 'disabled' : ''}">
                     <div class="source-info">
-                        <input type="text" class="form-input" value="${source.url}" data-index="${index}" placeholder="URL" style="min-width: 300px;">
-                        <input type="text" class="form-input" value="${source.name}" data-index="${index}" placeholder="名称" style="width: 120px;">
-                        <select class="form-input" data-index="${index}" style="width: 100px;">
-                            <option value="电信" ${source.type === '电信' ? 'selected' : ''}>电信</option>
-                            <option value="联通" ${source.type === '联通' ? 'selected' : ''}>联通</option>
-                            <option value="移动" ${source.type === '移动' ? 'selected' : ''}>移动</option>
+                        <input type="text" class="form-input" value="\${source.url}" data-index="\${index}" placeholder="URL" style="min-width: 300px;">
+                        <input type="text" class="form-input" value="\${source.name}" data-index="\${index}" placeholder="名称" style="width: 120px;">
+                        <select class="form-input" data-index="\${index}" style="width: 100px;">
+                            <option value="电信" \${source.type === '电信' ? 'selected' : ''}>电信</option>
+                            <option value="联通" \${source.type === '联通' ? 'selected' : ''}>联通</option>
+                            <option value="移动" \${source.type === '移动' ? 'selected' : ''}>移动</option>
                         </select>
                     </div>
                     <div class="source-actions">
-                        <button class="small-btn" onclick="toggleSource(${index})">${source.enabled ? '👁️' : '🚫'}</button>
-                        <button class="small-btn" onclick="deleteSource(${index})">🗑️</button>
+                        <button class="small-btn" onclick="toggleSource(\${index})">\${source.enabled ? '👁️' : '🚫'}</button>
+                        <button class="small-btn" onclick="deleteSource(\${index})">🗑️</button>
                     </div>
                 </div>
             \`).join('');
