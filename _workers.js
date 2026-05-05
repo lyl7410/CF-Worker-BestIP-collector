@@ -1585,8 +1585,8 @@ export default {
             try {
                 let url = '/sources';
                 if (isLoggedIn) {
-                    if (sessionId) url += `?session=${encodeURIComponent(sessionId)}`;
-                    else if (tokenConfig) url += `?token=${encodeURIComponent(tokenConfig.token)}`;
+                    if (sessionId) url += \`?session=${encodeURIComponent(sessionId)}\`;
+                    else if (tokenConfig) url += \`?token=${encodeURIComponent(tokenConfig.token)}\`;
                 }
                 
                 const response = await fetch(url);
@@ -1608,7 +1608,7 @@ export default {
                 return;
             }
             
-            listElement.innerHTML = sourcesList.map((source, index) => `
+            listElement.innerHTML = sourcesList.map((source, index) => \`
                 <div class="source-item ${!source.enabled ? 'disabled' : ''}">
                     <div class="source-info">
                         <input type="text" class="form-input" value="${source.url}" data-index="${index}" placeholder="URL" style="min-width: 300px;">
@@ -1624,7 +1624,7 @@ export default {
                         <button class="small-btn" onclick="deleteSource(${index})">🗑️</button>
                     </div>
                 </div>
-            `).join('');
+            \`).join('');
         }
         
         function addNewSource() {
@@ -1648,11 +1648,11 @@ export default {
             for (let i = 0; i < sourcesList.length; i++) {
                 const source = sourcesList[i];
                 if (!source.url || !source.name || !source.type) {
-                    showMessage(`第${i + 1}个数据源信息不完整`, 'error');
+                    showMessage(\`第${i + 1}个数据源信息不完整\`, 'error');
                     return;
                 }
                 try { new URL(source.url); } catch (e) {
-                    showMessage(`第${i + 1}个数据源的 URL 无效`, 'error');
+                    showMessage(\`第${i + 1}个数据源的 URL 无效\`, 'error');
                     return;
                 }
             }
@@ -1661,8 +1661,8 @@ export default {
                 let url = '/sources';
                 const headers = { 'Content-Type': 'application/json' };
                 if (isLoggedIn) {
-                    if (sessionId) headers['Authorization'] = `Bearer ${sessionId}`;
-                    else if (tokenConfig) headers['Authorization'] = `Token ${tokenConfig.token}`;
+                    if (sessionId) headers['Authorization'] = 'Bearer ' + sessionId;
+                    else if (tokenConfig) headers['Authorization'] = 'Token ' + tokenConfig.token;
                 }
                 
                 const response = await fetch(url, {
