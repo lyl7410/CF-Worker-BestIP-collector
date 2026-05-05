@@ -3,6 +3,17 @@
 const FAST_IP_COUNT = 25; // 修改这个数字来自定义优质IP数量
 const AUTO_TEST_MAX_IPS = 200; // 自动测速的最大IP数量，避免测速过多导致超时
 
+// 默认数据源列表
+const DEFAULT_SOURCES = [
+  { url: 'https://ip.164746.xyz', name: '164746', type: '电信', enabled: true },
+  { url: 'https://ip.haogege.xyz/', name: 'haogege', type: '联通', enabled: true },
+  { url: 'https://stock.hostmonit.com/CloudFlareYes', name: 'hostmonit', type: '移动', enabled: true },
+  { url: 'https://api.uouin.com/cloudflare.html', name: 'uouin', type: '电信', enabled: true },
+  { url: 'https://addressesapi.090227.xyz/CloudFlareYes', name: '090227', type: '联通', enabled: true },
+  { url: 'https://addressesapi.090227.xyz/ip.164746.xyz', name: '164746-api', type: '电信', enabled: true },
+  { url: 'https://www.wetest.vip/page/cloudflare/address_v4.html', name: 'wetest', type: '移动', enabled: true }
+];
+
 export default {
     async scheduled(event, env, ctx) {
       console.log('Running scheduled IP update...');
@@ -14,18 +25,19 @@ export default {
         }
 
         const startTime = Date.now();
-        const { uniqueIPs, results } = await updateAllIPs(env);
+        const { uniqueIPs, ipSources, results } = await updateAllIPs(env);
         const duration = Date.now() - startTime;
 
         await env.IP_STORAGE.put('cloudflare_ips', JSON.stringify({
           ips: uniqueIPs,
+          ipSources: ipSources,
           lastUpdated: new Date().toISOString(),
           count: uniqueIPs.length,
           sources: results
         }));
 
         // 自动触发测速并存储优质IP
-        await autoSpeedTestAndStore(env, uniqueIPs);
+        await autoSpeedTestAndStore(env, uniqueIPs, ipSources);
 
         console.log(`Scheduled update: ${uniqueIPs.length} IPs collected in ${duration}ms`);
       } catch (error) {
@@ -78,6 +90,10 @@ export default {
             return await handleAdminStatus(env);
           case '/admin-logout':
             return await handleAdminLogout(env);
+          case '/sources':
+            return await handleSources(env, request);
+          case '/raw-ips-with-sources':
+            return await handleRawIPsWithSources(env, request);
           case '/admin-token':
             return await handleAdminToken(request, env);
           default:
@@ -1249,14 +1265,28 @@ export default {
                     const ip = item.ip;
                     const latency = item.latency;
                     const speedClass = latency < 200 ? 'speed-fast' : latency < 500 ? 'speed-medium' : 'speed-slow';
+                    const sources = item.sources || [];
+                    
+                    let sourceName = '';
+                    let lineType = '';
+                    if (sources.length > 0) {
+                        sourceName = sources[0].name || '';
+                        lineType = sources[0].type || '';
+                    }
+                    
+                    let note = '';
+                    if (sourceName || lineType) {
+                        note = `(${sourceName}${lineType ? '-' + lineType : ''})`;
+                    }
+                    
                     return `
                     <div class="ip-item" data-ip="${ip}">
                         <div class="ip-info">
                             <span class="ip-address">${ip}</span>
-                            <span class="speed-result ${speedClass}" id="speed-${ip.replace(/\./g, '-')}">${latency}ms</span>
+                            <span class="speed-result ${speedClass}" id="speed-${ip.replace(/\./g, '-')}">${latency}ms ${note}</span>
                         </div>
                         <div class="action-buttons">
-                            <button class="small-btn" onclick="copyIP('${ip}')">复制</button>
+                            <button class="small-btn" onclick="copyIPWithNote('${ip}', ${latency}, '${sourceName}', '${lineType}')">复制</button>
                         </div>
                     </div>
                   `}).join('') : 
@@ -1327,6 +1357,28 @@ export default {
     </div>
 
     <!-- Token配置模态框 -->
+
+    <!-- 数据源管理模态框 -->
+    <div class="modal" id="sources-modal">
+        <div class="modal-content" style="max-width: 800px;">
+            <h3>🌐 数据源管理</h3>
+            <p style="margin-bottom: 16px; color: #64748b;">管理 IP 地址收集的数据源网站，可以添加、删除、修改或禁用数据源。</p>
+            
+            <div style="margin-bottom: 16px;">
+                <button class="button button-success" onclick="addNewSource()">➕ 添加数据源</button>
+            </div>
+            
+            <div id="sources-list" style="max-height: 400px; overflow-y: auto;">
+                <!-- 数据源列表将由 JavaScript 动态生成 -->
+            </div>
+            
+            <div class="modal-buttons" style="margin-top: 20px;">
+                <button class="button button-secondary" onclick="closeSourcesModal()">取消</button>
+                <button class="button" onclick="saveSourcesConfig()">💾 保存配置</button>
+            </div>
+        </div>
+    </div>
+
     <div class="modal" id="token-modal">
         <div class="modal-content">
             <h3>⚙️ Token 配置</h3>
@@ -1485,6 +1537,142 @@ export default {
         function closeTokenModal() {
             document.getElementById('token-modal').style.display = 'none';
         }
+        // 数据源管理相关变量
+        let sourcesList = [];
+        let editingSourceIndex = -1;
+
+        function openSourcesModal() {
+            document.getElementById('sources-modal').style.display = 'flex';
+            loadSourcesList();
+        }
+
+        function closeSourcesModal() {
+            document.getElementById('sources-modal').style.display = 'none';
+        }
+
+        async function loadSourcesList() {
+            try {
+                let url = '/sources';
+                if (isLoggedIn) {
+                    if (sessionId) {
+                        url += `?session=${encodeURIComponent(sessionId)}`;
+                    } else if (tokenConfig) {
+                        url += `?token=${encodeURIComponent(tokenConfig.token)}`;
+                    }
+                }
+                
+                const response = await fetch(url);
+                const data = await response.json();
+                
+                if (data.sources) {
+                    sourcesList = data.sources;
+                    renderSourcesList();
+                }
+            } catch (error) {
+                showMessage('加载数据源列表失败：' + error.message, 'error');
+            }
+        }
+
+        function renderSourcesList() {
+            const listElement = document.getElementById('sources-list');
+            if (!sourcesList || sourcesList.length === 0) {
+                listElement.innerHTML = '<p style="text-align: center; color: #64748b; padding: 40px;">暂无数据源配置</p>';
+                return;
+            }
+            
+            listElement.innerHTML = sourcesList.map((source, index) => `
+                <div class="source-item ${!source.enabled ? 'disabled' : ''}">
+                    <div class="source-info">
+                        <input type="text" class="form-input source-url" value="${source.url}" data-index="${index}" placeholder="URL 地址" style="min-width: 300px;">
+                        <input type="text" class="form-input" value="${source.name}" data-index="${index}" placeholder="名称" style="width: 120px;">
+                        <select class="form-input source-type" data-index="${index}" style="width: 100px;">
+                            <option value="电信" ${source.type === '电信' ? 'selected' : ''}>电信</option>
+                            <option value="联通" ${source.type === '联通' ? 'selected' : ''}>联通</option>
+                            <option value="移动" ${source.type === '移动' ? 'selected' : ''}>移动</option>
+                        </select>
+                    </div>
+                    <div class="source-actions">
+                        <button class="small-btn" onclick="toggleSourceEnabled(${index})" title="${source.enabled ? '禁用' : '启用'}">
+                            ${source.enabled ? '👁️' : '🚫'}
+                        </button>
+                        <button class="small-btn" onclick="deleteSource(${index})" title="删除">🗑️</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function addNewSource() {
+            sourcesList.push({
+                url: '',
+                name: '',
+                type: '电信',
+                enabled: true
+            });
+            renderSourcesList();
+        }
+
+        function deleteSource(index) {
+            if (confirm('确定要删除这个数据源吗？')) {
+                sourcesList.splice(index, 1);
+                renderSourcesList();
+            }
+        }
+
+        function toggleSourceEnabled(index) {
+            sourcesList[index].enabled = !sourcesList[index].enabled;
+            renderSourcesList();
+        }
+
+        async function saveSourcesConfig() {
+            // 验证数据源
+            for (let i = 0; i < sourcesList.length; i++) {
+                const source = sourcesList[i];
+                if (!source.url || !source.name || !source.type) {
+                    showMessage(`第${i + 1}个数据源信息不完整，请填写 URL、名称和类型`, 'error');
+                    return;
+                }
+                try {
+                    new URL(source.url);
+                } catch (e) {
+                    showMessage(`第${i + 1}个数据源的 URL 格式无效：${source.url}`, 'error');
+                    return;
+                }
+            }
+            
+            try {
+                let url = '/sources';
+                const headers = {
+                    'Content-Type': 'application/json'
+                };
+                if (isLoggedIn) {
+                    if (sessionId) {
+                        headers['Authorization'] = `Bearer ${sessionId}`;
+                    } else if (tokenConfig) {
+                        headers['Authorization'] = `Token ${tokenConfig.token}`;
+                    }
+                }
+                
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: headers,
+                    body: JSON.stringify({ sources: sourcesList })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showMessage('数据源配置已保存，下次更新 IP 时生效', 'success');
+                    closeSourcesModal();
+                    setTimeout(() => refreshData(), 1000);
+                } else {
+                    showMessage(data.error, 'error');
+                }
+            } catch (error) {
+                showMessage('保存失败：' + error.message, 'error');
+            }
+        }
+
+
 
         function generateRandomToken() {
             const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
@@ -1679,6 +1867,18 @@ export default {
         function copyIP(ip) {
             navigator.clipboard.writeText(ip).then(() => {
                 showMessage(\`已复制 IP: \${ip}\`);
+            }).catch(err => {
+                showMessage('复制失败，请手动复制', 'error');
+            });
+        }
+        
+        function copyIPWithNote(ip, latency, sourceName, lineType) {
+            // 格式：IP#延迟 ms(数据源 - 线路)
+            const note = sourceName && lineType ? `(${sourceName}-${lineType})` : '';
+            const ipWithNote = \`\${ip}#\${latency}ms\${note}\`;
+            
+            navigator.clipboard.writeText(ipWithNote).then(() => {
+                showMessage(\`已复制 IP: \${ipWithNote}\`);
             }).catch(err => {
                 showMessage('复制失败，请手动复制', 'error');
             });
@@ -1910,14 +2110,30 @@ export default {
                         const ip = item.ip;
                         const latency = item.latency;
                         const speedClass = latency < 200 ? 'speed-fast' : latency < 500 ? 'speed-medium' : 'speed-slow';
+                        const sources = item.sources || [];
+                        
+                        // 提取第一个数据源的名称和线路类型作为备注
+                        let sourceName = '';
+                        let lineType = '';
+                        if (sources.length > 0) {
+                            sourceName = sources[0].name || '';
+                            lineType = sources[0].type || '';
+                        }
+                        
+                        // 格式备注：数据源 + 线路
+                        let note = '';
+                        if (sourceName || lineType) {
+                            note = \`(\${sourceName}\${lineType ? '-' + lineType : ''})\`;
+                        }
+                        
                         return \`
                         <div class="ip-item" data-ip="\${ip}">
                             <div class="ip-info">
                                 <span class="ip-address">\${ip}</span>
-                                <span class="speed-result \${speedClass}" id="speed-\${ip.replace(/\./g, '-')}">\${latency}ms</span>
+                                <span class="speed-result \${speedClass}" id="speed-\${ip.replace(/\./g, '-')}">\${latency}ms \${note}</span>
                             </div>
                             <div class="action-buttons">
-                                <button class="small-btn" onclick="copyIP('\${ip}')">复制</button>
+                                <button class="small-btn" onclick="copyIPWithNote('${ip}', ${latency}, '${sourceName}', '${lineType}')">复制</button>
                             </div>
                         </div>
                         \`;
@@ -2063,19 +2279,20 @@ export default {
       }
 
       const startTime = Date.now();
-      const { uniqueIPs, results } = await updateAllIPs(env);
+      const { uniqueIPs, ipSources, results } = await updateAllIPs(env);
       const duration = Date.now() - startTime;
 
       // 存储到 KV
       await env.IP_STORAGE.put('cloudflare_ips', JSON.stringify({
         ips: uniqueIPs,
+        ipSources: ipSources,
         lastUpdated: new Date().toISOString(),
         count: uniqueIPs.length,
         sources: results
       }));
 
       // 自动触发测速并存储优质IP
-      await autoSpeedTestAndStore(env, uniqueIPs);
+      await autoSpeedTestAndStore(env, uniqueIPs, ipSources);
 
       return jsonResponse({
         success: true,
@@ -2095,7 +2312,7 @@ export default {
   }
   
   // 自动测速并存储优质IP - 优化后的逻辑
-  async function autoSpeedTestAndStore(env, ips) {
+  async function autoSpeedTestAndStore(env, ips, ipSources = {}) {
     if (!ips || ips.length === 0) return;
     
     const speedResults = [];
@@ -2119,9 +2336,11 @@ export default {
         if (result.status === 'fulfilled') {
           const speedData = result.value;
           if (speedData.success && speedData.latency) {
+            const sourceInfo = ipSources[ip] || [];
             speedResults.push({
               ip: ip,
-              latency: Math.round(speedData.latency) // 确保延迟是整数
+              latency: Math.round(speedData.latency),
+              sources: sourceInfo
             });
           }
         }
@@ -2358,6 +2577,18 @@ export default {
     return getDefaultData();
   }
   
+  // 从 KV 获取存储的带来源信息的 IPs
+  async function getStoredIPsWithSources(env) {
+    const data = await getStoredIPs(env);
+    return {
+      ips: data.ips || [],
+      ipSources: data.ipSources || {},
+      lastUpdated: data.lastUpdated,
+      count: data.count || 0,
+      sources: data.sources || []
+    };
+  }
+  
   // 从 KV 获取存储的测速IPs
   async function getStoredSpeedIPs(env) {
     try {
@@ -2433,6 +2664,81 @@ export default {
   }
   
   function handleCORS() {
+
+  // 处理数据源管理 - 获取
+  async function handleSources(env, request) {
+    if (!await verifyAdmin(request, env)) {
+      return jsonResponse({ error: '需要管理员权限' }, 401);
+    }
+    
+    if (request.method === 'GET') {
+      try {
+        const sources = await getSourcesConfig(env);
+        return jsonResponse({ sources });
+      } catch (error) {
+        return jsonResponse({ error: error.message }, 500);
+      }
+    } else if (request.method === 'POST') {
+      // 保存数据源配置
+      try {
+        const { sources } = await request.json();
+        
+        if (!sources || !Array.isArray(sources)) {
+          return jsonResponse({ error: '数据源格式错误' }, 400);
+        }
+        
+        // 验证每个数据源
+        for (const source of sources) {
+          if (!source.url || !source.name || !source.type) {
+            return jsonResponse({ error: '每个数据源必须包含 url、name 和 type 字段' }, 400);
+          }
+          try {
+            new URL(source.url);
+          } catch (e) {
+            return jsonResponse({ error: `无效的 URL: ${source.url}` }, 400);
+          }
+        }
+        
+        await env.IP_STORAGE.put('custom_sources', JSON.stringify(sources));
+        
+        return jsonResponse({ 
+          success: true, 
+          sources,
+          message: '数据源配置已保存'
+        });
+      } catch (error) {
+        return jsonResponse({ error: error.message }, 500);
+      }
+    } else {
+      return jsonResponse({ error: 'Method not allowed' }, 405);
+    }
+  }
+  
+  // 获取数据源配置
+  async function getSourcesConfig(env) {
+    try {
+      const sources = await env.IP_STORAGE.get('custom_sources');
+      if (sources) {
+        return JSON.parse(sources);
+      }
+    } catch (error) {
+      console.error('Error reading sources config:', error);
+    }
+    
+    // 返回默认数据源
+    return JSON.parse(JSON.stringify(DEFAULT_SOURCES));
+  }
+  
+  // 处理带数据源信息的原始 IP 数据
+  async function handleRawIPsWithSources(env, request) {
+    if (!await verifyAdmin(request, env)) {
+      return jsonResponse({ error: '需要管理员权限' }, 401);
+    }
+    
+    const data = await getStoredIPsWithSources(env);
+    return jsonResponse(data);
+  }
+
     return new Response(null, {
       headers: {
         'Access-Control-Allow-Origin': '*',
